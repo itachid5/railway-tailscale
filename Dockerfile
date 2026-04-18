@@ -20,12 +20,34 @@ RUN mkdir -p /var/run/sshd && \
     echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
     echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config
 
+# --- উবুন্টুর ডিফল্ট ওয়েলকাম মেসেজ (MOTD) এবং 'unminimize' মেসেজ বন্ধ করা হচ্ছে ---
+RUN rm -rf /etc/update-motd.d/* && \
+    rm -f /etc/legal && \
+    rm -f /etc/motd && \
+    touch /home/devuser/.hushlogin && \
+    touch /root/.hushlogin
+
 # ১. প্রম্পট (PS1) স্টাইল সেটআপ
 RUN echo "export PS1='\[\e[1;32m\]\u@phoenix\[\e[0m\]:\[\e[1;36m\]\w\[\e[0m\]\$ '" >> /home/devuser/.bashrc && \
     echo "export PS1='\[\e[1;31m\]\u@phoenix\[\e[0m\]:\[\e[1;36m\]\w\[\e[0m\]# '" >> /root/.bashrc
 
-# ২. 'mm', 'cc' এবং 'cs' ফাংশন তৈরি
+# ২. কাস্টম ওয়েলকাম মেসেজ, 'mm', 'cc' এবং 'cs' ফাংশন তৈরি
 RUN cat > /tmp/setup.sh <<'EOF'
+# কাস্টম ওয়েলকাম মেসেজ (MOTD)
+function custom_motd() {
+    OS_VERSION=$(grep PRETTY_NAME /etc/os-release | cut -d '"' -f 2)
+    KERNEL_VERSION=$(uname -r)
+    DATE=$(date +"%A, %d %B %Y, %T %Z")
+    
+    echo -e "\e[1;34m╭────────────────────────────────────────────────────────╮\e[0m"
+    echo -e "\e[1;34m│ \e[1;37mWelcome to Phoenix Server\e[0m                              \e[1;34m│\e[0m"
+    echo -e "\e[1;34m├────────────────────────────────────────────────────────┤\e[0m"
+    echo -e "\e[1;34m│ \e[1;32mOS\e[0m     : ${OS_VERSION}"
+    echo -e "\e[1;34m│ \e[1;32mKernel\e[0m : ${KERNEL_VERSION}"
+    echo -e "\e[1;34m│ \e[1;32mDate\e[0m   : ${DATE}"
+    echo -e "\e[1;34m╰────────────────────────────────────────────────────────╯\e[0m"
+}
+
 # সিস্টেম মনিটর ফাংশন
 function mm() {
     C_C="\e[36m"; C_G="\e[90m"; C_W="\e[1;37m"; C_R="\e[0m"
@@ -47,7 +69,6 @@ function mm() {
 
 # কানেক্ট ফাংশন (cc)
 function cc() {
-    # চেক করা হচ্ছে ইতিমধ্যে রান করছে কি না
     if pgrep -x "tailscaled" > /dev/null
     then
         echo -e "\e[1;33mℹ Tailscale daemon is already running in background.\e[0m"
@@ -86,8 +107,10 @@ function cs() {
     echo -e "\e[1;32m✔ Tailscale has been stopped and memory is cleared.\e[0m\n"
 }
 
-# লগইন মেসেজ
+# লগইন করার পর যা যা দেখাবে
 if [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]; then
+    clear
+    custom_motd
     mm
     echo -e "\e[1;34m⚡ Shortcuts:\e[0m"
     echo -e "   \e[1;33mcc\e[0m : Connect Tailscale"

@@ -20,11 +20,11 @@ RUN mkdir -p /var/run/sshd && \
     echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
     echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config
 
-# ১. প্রম্পট (PS1) এবং স্টাইল সেটআপ
+# ১. প্রম্পট (PS1) স্টাইল সেটআপ
 RUN echo "export PS1='\[\e[1;32m\]\u@phoenix\[\e[0m\]:\[\e[1;36m\]\w\[\e[0m\]\$ '" >> /home/devuser/.bashrc && \
     echo "export PS1='\[\e[1;31m\]\u@phoenix\[\e[0m\]:\[\e[1;36m\]\w\[\e[0m\]# '" >> /root/.bashrc
 
-# ২. 'mm' এবং 'cc' ফাংশন তৈরি
+# ২. 'mm', 'cc' এবং 'cs' ফাংশন তৈরি
 RUN cat > /tmp/setup.sh <<'EOF'
 # সিস্টেম মনিটর ফাংশন
 function mm() {
@@ -45,8 +45,18 @@ function mm() {
     echo -e "${C_G}------------------------------------------------------------${C_R}\n"
 }
 
-# টেইলস্কেল কানেক্ট ফাংশন (cc)
+# কানেক্ট ফাংশন (cc)
 function cc() {
+    # চেক করা হচ্ছে ইতিমধ্যে রান করছে কি না
+    if pgrep -x "tailscaled" > /dev/null
+    then
+        echo -e "\e[1;33mℹ Tailscale daemon is already running in background.\e[0m"
+    else
+        echo -e "\e[1;33m⌛ Starting Tailscale Daemon in background...\e[0m"
+        sudo tailscaled --tun=userspace-networking --socks5-server=localhost:1055 &
+        sleep 3
+    fi
+
     echo -e "\e[1;36m"
     read -p "Enter Tailscale Auth Key: " TS_KEY
     echo -e "\e[0m"
@@ -56,24 +66,32 @@ function cc() {
         return 1
     fi
 
-    echo -e "\e[1;33m⌛ Starting Tailscale Daemon...\e[0m"
-    sudo tailscaled --tun=userspace-networking --socks5-server=localhost:1055 &
-    sleep 3
-
     echo -e "\e[1;33m⌛ Connecting to Tailscale Network...\e[0m"
     sudo tailscale up --authkey="$TS_KEY" --hostname=phoenix
     
     if [ $? -eq 0 ]; then
-        echo -e "\n\e[1;32m✔ Success! Phoenix is now online on Tailscale.\e[0m\n"
+        echo -e "\n\e[1;32m✔ Success! Phoenix is now online.\e[0m"
+        echo -e "\e[90mIt will keep running in background until you type 'cs'.\e[0m\n"
     else
         echo -e "\n\e[1;31m✘ Failed to connect. Please check your Key.\e[0m\n"
     fi
 }
 
+# ডিসকানেক্ট ফাংশন (cs)
+function cs() {
+    echo -e "\e[1;31m⌛ Disconnecting and stopping Tailscale...\e[0m"
+    sudo tailscale logout 2>/dev/null
+    sudo tailscale down 2>/dev/null
+    sudo pkill -f tailscaled
+    echo -e "\e[1;32m✔ Tailscale has been stopped and memory is cleared.\e[0m\n"
+}
+
 # লগইন মেসেজ
 if [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]; then
     mm
-    echo -e "\e[1;34m⚡ Shortcut: Type \e[1;33mcc\e[1;34m to connect Tailscale.\e[0m\n"
+    echo -e "\e[1;34m⚡ Shortcuts:\e[0m"
+    echo -e "   \e[1;33mcc\e[0m : Connect Tailscale"
+    echo -e "   \e[1;31mcs\e[0m : Stop Tailscale\n"
 fi
 EOF
 

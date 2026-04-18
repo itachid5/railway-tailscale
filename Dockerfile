@@ -3,14 +3,17 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TERM=xterm-256color
 ENV COLORTERM=truecolor
+# ঢাকা, বাংলাদেশ টাইমজোন সেট করা হচ্ছে
+ENV TZ="Asia/Dhaka"
 
-# প্রয়োজনীয় প্যাকেজ ইন্সটল করা হচ্ছে
+# প্রয়োজনীয় প্যাকেজ এবং টাইমজোন (tzdata) সেটআপ
 RUN apt-get update && apt-get install -y \
-    openssh-server sudo curl wget git nano procps net-tools iputils-ping dnsutils lsof htop jq speedtest-cli unzip tree \
+    tzdata openssh-server sudo curl wget git nano procps net-tools iputils-ping dnsutils lsof htop jq speedtest-cli unzip tree \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && curl -fsSL https://tailscale.com/install.sh | sh \
     && rm -rf /var/lib/apt/lists/*
 
-# SSH ফোল্ডার তৈরি এবং ইউজার/পাসওয়ার্ড সেটআপ
+# SSH ফোল্ডার তৈরি এবং ইউজার/পাসওয়ার্ড সেটআপ
 RUN mkdir -p /var/run/sshd && \
     useradd -m -s /bin/bash -u 1000 devuser && \
     echo "devuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
@@ -20,7 +23,7 @@ RUN mkdir -p /var/run/sshd && \
     echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
     echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config
 
-# ডিফল্ট ওয়েলকাম মেসেজ বন্ধ করা হচ্ছে
+# ডিফল্ট ওয়েলকাম মেসেজ বন্ধ করা হচ্ছে
 RUN rm -rf /etc/update-motd.d/* && \
     rm -f /etc/legal && \
     rm -f /etc/motd && \
@@ -38,6 +41,7 @@ RUN cat > /tmp/setup.sh <<'EOF'
 # 🚀 SYSTEM ALIASES (BUILT-IN)
 # ==========================================
 
+# Nav & Files
 alias c='clear'
 alias ..='cd ..'
 alias ...='cd ../..'
@@ -48,6 +52,7 @@ alias sz='du -sh * 2>/dev/null | sort -hr'
 alias tree='tree -C'
 alias f='find . -name'
 
+# System
 alias up='sudo apt-get update && sudo apt-get upgrade -y'
 alias clean='sudo apt-get autoremove -y && sudo apt-get clean'
 alias mem='free -h'
@@ -56,11 +61,13 @@ alias top='htop'
 alias ports='sudo netstat -tulpn'
 alias logs='sudo tail -f /var/log/syslog'
 
-alias myip='curl -s ifconfig.me; echo'
+# Network & VPN
+alias myip='echo -e "\n\e[1;36m🌐 IP Details:\e[0m"; curl -s ipinfo.io; echo'
 alias speed='echo -e "\e[1;33m⌛ Testing Speed...\e[0m"; speedtest-cli --simple'
 alias ping='ping -c 4'
 alias ts='sudo tailscale status'
 
+# Dev & Tools
 alias gs='git status'
 alias ga='git add .'
 alias gc='git commit -m'
@@ -68,8 +75,10 @@ alias gp='git push'
 alias gl='git log --oneline --graph -n 10'
 alias get='wget -c'
 alias api='curl -s'
-alias weather='curl -s wttr.in?0'
+# আবহাওয়া ঢাকার জন্য সেট করা হয়েছে
+alias weather='curl -s wttr.in/Dhaka?0'
 
+# Apps Management
 alias apps='echo -e "\n\e[1;36m▶ Node/Python Apps:\e[0m"; ps -eo pid,user,%cpu,%mem,command | grep -E "[n]ode|[p]ython" || echo -e "\e[90mNone\e[0m"'
 alias kn='sudo pkill -f node 2>/dev/null; echo -e "\e[1;32m✔ All Node apps stopped.\e[0m"'
 alias kp='sudo pkill -f python 2>/dev/null; echo -e "\e[1;32m✔ All Python apps stopped.\e[0m"'
@@ -78,28 +87,57 @@ alias kp='sudo pkill -f python 2>/dev/null; echo -e "\e[1;32m✔ All Python apps
 # 🛠️ CUSTOM SHORTCUT MANAGER
 # ==========================================
 
+# কাস্টম শর্টকাট সেভ করার ফাইল লোড করা
 CUSTOM_ALIAS_FILE="$HOME/.my_shortcuts"
-if [ -f "$CUSTOM_ALIAS_FILE" ]; then source "$CUSTOM_ALIAS_FILE"; fi
+if [ -f "$CUSTOM_ALIAS_FILE" ]; then
+    source "$CUSTOM_ALIAS_FILE"
+fi
 
 function addcmd() {
-    echo -e "\n\e[1;36m➕ Create a New Shortcut\e[0m\n\e[90m----------------------------------------\e[0m"
+    echo -e "\n\e[1;36m➕ Create a New Shortcut\e[0m"
+    echo -e "\e[90m----------------------------------------\e[0m"
     read -p "Shortcut Name (e.g., gohome) : " S_NAME
     if [ -z "$S_NAME" ]; then echo -e "\e[1;31m✘ Cancelled. Name cannot be empty.\e[0m"; return 1; fi
-    if grep -q "alias $S_NAME=" "$CUSTOM_ALIAS_FILE" 2>/dev/null; then echo -e "\e[1;33mℹ Shortcut '$S_NAME' already exists! Choose another.\e[0m"; return 1; fi
+    
+    # Check if alias already exists in custom file
+    if grep -q "alias $S_NAME=" "$CUSTOM_ALIAS_FILE" 2>/dev/null; then
+        echo -e "\e[1;33mℹ Shortcut '$S_NAME' already exists! Please choose another name.\e[0m"
+        return 1
+    fi
 
     read -p "Command to run (e.g., cd ~)  : " S_CMD
     if [ -z "$S_CMD" ]; then echo -e "\e[1;31m✘ Cancelled. Command cannot be empty.\e[0m"; return 1; fi
 
     echo "alias $S_NAME='$S_CMD'" >> "$CUSTOM_ALIAS_FILE"
     eval "alias $S_NAME='$S_CMD'"
-    echo -e "\e[1;32m✔ Shortcut '$S_NAME' created successfully!\e[0m\n"
+    echo -e "\e[1;32m✔ Shortcut '$S_NAME' has been created and is ready to use!\e[0m\n"
+}
+
+function delcmd() {
+    echo -e "\n\e[1;31m🗑️ Delete a Custom Shortcut\e[0m"
+    echo -e "\e[90m----------------------------------------\e[0m"
+    read -p "Shortcut Name to delete : " S_NAME
+    if [ -z "$S_NAME" ]; then echo -e "\e[1;31m✘ Cancelled. Name cannot be empty.\e[0m"; return 1; fi
+    
+    if ! grep -q "alias $S_NAME=" "$CUSTOM_ALIAS_FILE" 2>/dev/null; then
+        echo -e "\e[1;33mℹ Shortcut '$S_NAME' not found in your custom list!\e[0m"
+        return 1
+    fi
+
+    # ডিলিট করার কমান্ড
+    sed -i "/alias $S_NAME=/d" "$CUSTOM_ALIAS_FILE"
+    unalias "$S_NAME" 2>/dev/null
+    echo -e "\e[1;32m✔ Shortcut '$S_NAME' has been successfully deleted!\e[0m\n"
 }
 
 # ==========================================
 # ⚡ THE PERFECTLY ALIGNED COMMAND MENU
 # ==========================================
 
-function pcmd() { printf "   \e[1;32m%-10s\e[0m : %s\n" "$1" "$2"; }
+function pcmd() {
+    # এই ফাংশনটি লেখাগুলোকে একদম পারফেক্টলি অ্যালাইন করবে
+    printf "   \e[1;32m%-10s\e[0m : %s\n" "$1" "$2"
+}
 
 function cmds() {
     echo -e "\n\e[1;37m⚡ ALL MAGICAL SHORTCUTS ⚡\e[0m"
@@ -134,16 +172,19 @@ function cmds() {
     pcmd "cc" "Connect to Tailscale VPN"
     pcmd "cs" "Disconnect & Stop Tailscale VPN"
     pcmd "ts" "Show Tailscale Status"
-    pcmd "myip" "Show Public IP and location info"
+    pcmd "myip" "Show Public IP and full location info"
     pcmd "speed" "Test Internet Download/Upload speed"
     
     echo -e "\n\e[1;33m🛠️ Tools & Dev\e[0m"
-    pcmd "weather" "Show current weather in terminal"
+    pcmd "weather" "Show current weather in Dhaka"
     pcmd "gs, ga, gc" "Git Status, Add, Commit"
     pcmd "addcmd" "Create a personal custom shortcut!"
+    pcmd "delcmd" "Delete a personal custom shortcut!"
     
+    # Custom Shortcuts Section
     echo -e "\n\e[1;35m👤 My Personal Shortcuts\e[0m"
     if [ -f "$CUSTOM_ALIAS_FILE" ] && [ -s "$CUSTOM_ALIAS_FILE" ]; then
+        # রিড করে পারফেক্ট অ্যালাইনে প্রিন্ট করা
         cat "$CUSTOM_ALIAS_FILE" | sed "s/alias //g" | sed "s/='/|/g" | sed "s/'//g" | while IFS='|' read -r name cmd; do
             pcmd "$name" "$cmd"
         done
@@ -153,6 +194,7 @@ function cmds() {
     echo -e "\e[90m────────────────────────────────────────────────────\e[0m\n"
 }
 
+# Advanced Functions
 function kport() {
     if [ -z "$1" ]; then echo -e "\e[1;31m✘ Usage: kport <port>\e[0m"; return 1; fi
     PID=$(sudo lsof -t -i:$1)
@@ -179,7 +221,7 @@ function custom_motd() {
     OS_VERSION=$(grep PRETTY_NAME /etc/os-release | cut -d '"' -f 2); KERNEL_VERSION=$(uname -r); ARCH=$(uname -m)
     CPU_MODEL=$(awk -F': ' '/model name/ {print $2; exit}' /proc/cpuinfo | sed 's/^[ \t]*//'); [ -z "$CPU_MODEL" ] && CPU_MODEL="Unknown Virtual CPU"
     LAST_LOGIN_FILE="$HOME/.last_login_info"; if [ -f "$LAST_LOGIN_FILE" ]; then LAST_LOGIN=$(cat "$LAST_LOGIN_FILE"); else LAST_LOGIN="First Login"; fi
-    CURRENT_IP=$(echo $SSH_CLIENT | awk '{print $1}'); echo "$(date +"%A, %d %B %Y %T") from ${CURRENT_IP:-Local}" > "$LAST_LOGIN_FILE"
+    CURRENT_IP=$(echo $SSH_CLIENT | awk '{print $1}'); echo "$(date +"%A, %d %B %Y %T (Dhaka Time)") from ${CURRENT_IP:-Local}" > "$LAST_LOGIN_FILE"
     UPTIME_SEC=$(ps -o etimes= -p 1 2>/dev/null | xargs)
     if [ -n "$UPTIME_SEC" ] && [[ "$UPTIME_SEC" =~ ^[0-9]+$ ]]; then d=$((UPTIME_SEC / 86400)); h=$(( (UPTIME_SEC % 86400) / 3600 )); m=$(( (UPTIME_SEC % 3600) / 60 )); if [ $d -gt 0 ]; then MY_UPTIME="${d} days, ${h} hours, ${m} mins"; elif [ $h -gt 0 ]; then MY_UPTIME="${h} hours, ${m} mins"; else MY_UPTIME="${m} mins"; fi; else MY_UPTIME="Just started"; fi
 
@@ -209,8 +251,14 @@ function mm() {
     fi
     if [ -z "$MAX_CPU" ]; then MAX_CPU=200; fi
 
-    # 🛑 THE CPU FIX: শুধুমাত্র কন্টেইনারের ভেতরের প্রসেসগুলোর CPU যোগ করা হচ্ছে (Host leak বন্ধ!) 
-    CPU_USED=$(top -b -n 2 -d 0.3 | awk '/^top -/ {i++} i==2 && $1~/^[0-9]+$/ {sum+=$9} END {if(sum=="") sum=0; printf "%.0f", sum}')
+    CPU_USED=0
+    if [ -f /sys/fs/cgroup/cpu.stat ]; then
+        u1=$(awk '/^usage_usec/ {print $2}' /sys/fs/cgroup/cpu.stat 2>/dev/null || echo 0); sleep 0.2
+        u2=$(awk '/^usage_usec/ {print $2}' /sys/fs/cgroup/cpu.stat 2>/dev/null || echo 0); delta=$((u2 - u1)); [ "$delta" -gt 0 ] && CPU_USED=$((delta / 2000))
+    elif [ -f /sys/fs/cgroup/cpuacct/cpuacct.usage ]; then
+        u1=$(cat /sys/fs/cgroup/cpuacct/cpuacct.usage 2>/dev/null || echo 0); sleep 0.2
+        u2=$(cat /sys/fs/cgroup/cpuacct/cpuacct.usage 2>/dev/null || echo 0); delta=$((u2 - u1)); [ "$delta" -gt 0 ] && CPU_USED=$((delta / 2000000))
+    else CPU_USED=$(top -bn1 | awk '/Cpu/ {print $2}' | cut -f 1 -d "."); fi
 
     if [ "$CPU_USED" -lt 0 ]; then CPU_USED=0; fi
     if [ "$CPU_USED" -gt "$MAX_CPU" ]; then CPU_USED=$MAX_CPU; fi

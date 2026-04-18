@@ -51,6 +51,9 @@ alias md='mkdir -p'
 alias sz='du -sh * 2>/dev/null | sort -hr'
 alias tree='tree -C'
 alias f='find . -name'
+alias grep='grep --color=auto'
+alias h='history'
+alias findbig='find . -type f -size +50M -exec ls -lh {} + 2>/dev/null | awk "{ print \$9 \": \" \$5 }"'
 
 # System
 alias up='sudo apt-get update && sudo apt-get upgrade -y'
@@ -60,6 +63,7 @@ alias df='df -h'
 alias top='htop'
 alias ports='sudo netstat -tulpn'
 alias logs='sudo tail -f /var/log/syslog'
+alias rst='source ~/.bashrc && echo -e "\e[1;32m✔ Terminal Reloaded!\e[0m"'
 
 # Network & VPN
 alias myip='echo -e "\n\e[1;36m🌐 IP Details:\e[0m"; curl -s ipinfo.io; echo'
@@ -75,7 +79,7 @@ alias gp='git push'
 alias gl='git log --oneline --graph -n 10'
 alias get='wget -c'
 alias api='curl -s'
-# আবহাওয়া ঢাকার জন্য সেট করা হয়েছে
+# আবহাওয়া ঢাকার জন্য সেট করা হয়েছে
 alias weather='curl -s wttr.in/Dhaka?0'
 
 # Apps Management
@@ -152,6 +156,7 @@ function cmds() {
     pcmd "md" "Make a new directory (e.g., md newfolder)"
     pcmd "tree" "Show files in a visual tree structure"
     pcmd "ex <file>" "Extract ANY archive (zip, tar, gz, etc.)"
+    pcmd "findbig" "Find files larger than 50MB"
     
     echo -e "\n\e[1;33m💻 System & Processes\e[0m"
     pcmd "up" "Update and upgrade OS packages"
@@ -161,6 +166,8 @@ function cmds() {
     pcmd "top" "Open Task Manager (htop)"
     pcmd "ports" "List all currently open ports"
     pcmd "logs" "View live system logs"
+    pcmd "rst" "Reload terminal settings (bashrc)"
+    pcmd "h" "Show command history"
     
     echo -e "\n\e[1;33m🎯 App Management\e[0m"
     pcmd "apps" "List all running Node/Python apps"
@@ -220,8 +227,21 @@ function ex() {
 function custom_motd() {
     OS_VERSION=$(grep PRETTY_NAME /etc/os-release | cut -d '"' -f 2); KERNEL_VERSION=$(uname -r); ARCH=$(uname -m)
     CPU_MODEL=$(awk -F': ' '/model name/ {print $2; exit}' /proc/cpuinfo | sed 's/^[ \t]*//'); [ -z "$CPU_MODEL" ] && CPU_MODEL="Unknown Virtual CPU"
-    LAST_LOGIN_FILE="$HOME/.last_login_info"; if [ -f "$LAST_LOGIN_FILE" ]; then LAST_LOGIN=$(cat "$LAST_LOGIN_FILE"); else LAST_LOGIN="First Login"; fi
-    CURRENT_IP=$(echo $SSH_CLIENT | awk '{print $1}'); echo "$(date +"%A, %d %B %Y %T (Dhaka Time)") from ${CURRENT_IP:-Local}" > "$LAST_LOGIN_FILE"
+    
+    LAST_LOGIN_FILE="$HOME/.last_login_info"
+    if [ -f "$LAST_LOGIN_FILE" ]; then
+        LAST_LOGIN_DATA=$(cat "$LAST_LOGIN_FILE")
+        LAST_LOGIN_TIME=$(echo "$LAST_LOGIN_DATA" | cut -d'|' -f1)
+        LAST_LOGIN_IP=$(echo "$LAST_LOGIN_DATA" | cut -d'|' -f2)
+    else
+        LAST_LOGIN_TIME="First Login"
+        LAST_LOGIN_IP="---"
+    fi
+    
+    # বর্তমান লগইন এর সময় ১২-ঘণ্টা ফরমেটে এবং আইপি আলাদাভাবে সেভ করা হচ্ছে
+    CURRENT_IP=$(echo $SSH_CLIENT | awk '{print $1}')
+    echo "$(date +"%A, %d %B %Y %I:%M:%S %p")|${CURRENT_IP:-Local}" > "$LAST_LOGIN_FILE"
+    
     UPTIME_SEC=$(ps -o etimes= -p 1 2>/dev/null | xargs)
     if [ -n "$UPTIME_SEC" ] && [[ "$UPTIME_SEC" =~ ^[0-9]+$ ]]; then d=$((UPTIME_SEC / 86400)); h=$(( (UPTIME_SEC % 86400) / 3600 )); m=$(( (UPTIME_SEC % 3600) / 60 )); if [ $d -gt 0 ]; then MY_UPTIME="${d} days, ${h} hours, ${m} mins"; elif [ $h -gt 0 ]; then MY_UPTIME="${h} hours, ${m} mins"; else MY_UPTIME="${m} mins"; fi; else MY_UPTIME="Just started"; fi
 
@@ -232,7 +252,8 @@ function custom_motd() {
     echo -e "\e[1;36m│ \e[1;32m🐧 Kernel\e[0m     : ${KERNEL_VERSION} (${ARCH})"
     echo -e "\e[1;36m│ \e[1;32m⚙️  CPU\e[0m        : ${CPU_MODEL}"
     echo -e "\e[1;36m│ \e[1;32m⏳ Uptime\e[0m     : ${MY_UPTIME}"
-    echo -e "\e[1;36m│ \e[1;32m🕒 Last Login\e[0m : ${LAST_LOGIN}"
+    echo -e "\e[1;36m│ \e[1;32m🕒 Last Login\e[0m : ${LAST_LOGIN_TIME}"
+    echo -e "\e[1;36m│ \e[1;32m🌐 Login IP\e[0m   : ${LAST_LOGIN_IP}"
     echo -e "\e[1;36m╰────────────────────────────────────────────────────────────────────────╯\e[0m"
 }
 

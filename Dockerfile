@@ -20,7 +20,7 @@ RUN mkdir -p /var/run/sshd && \
     echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
     echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config
 
-# --- উবুন্টুর ডিফল্ট ওয়েলকাম মেসেজ (MOTD) এবং 'unminimize' মেসেজ বন্ধ করা হচ্ছে ---
+# ডিফল্ট ওয়েলকাম মেসেজ বন্ধ করা হচ্ছে
 RUN rm -rf /etc/update-motd.d/* && \
     rm -f /etc/legal && \
     rm -f /etc/motd && \
@@ -37,15 +37,30 @@ RUN cat > /tmp/setup.sh <<'EOF'
 function custom_motd() {
     OS_VERSION=$(grep PRETTY_NAME /etc/os-release | cut -d '"' -f 2)
     KERNEL_VERSION=$(uname -r)
-    DATE=$(date +"%A, %d %B %Y, %T %Z")
+    ARCH=$(uname -m)
+    CPU_MODEL=$(awk -F': ' '/model name/ {print $2; exit}' /proc/cpuinfo | sed 's/^[ \t]*//')
+    [ -z "$CPU_MODEL" ] && CPU_MODEL="Unknown Virtual CPU"
     
-    echo -e "\e[1;34m╭────────────────────────────────────────────────────────╮\e[0m"
-    echo -e "\e[1;34m│ \e[1;37mWelcome to Phoenix Server\e[0m                              \e[1;34m│\e[0m"
-    echo -e "\e[1;34m├────────────────────────────────────────────────────────┤\e[0m"
-    echo -e "\e[1;34m│ \e[1;32mOS\e[0m     : ${OS_VERSION}"
-    echo -e "\e[1;34m│ \e[1;32mKernel\e[0m : ${KERNEL_VERSION}"
-    echo -e "\e[1;34m│ \e[1;32mDate\e[0m   : ${DATE}"
-    echo -e "\e[1;34m╰────────────────────────────────────────────────────────╯\e[0m"
+    # লাস্ট লগইন আইপি এবং টাইম বের করা
+    LAST_LOGIN_FILE="$HOME/.last_login_info"
+    if [ -f "$LAST_LOGIN_FILE" ]; then
+        LAST_LOGIN=$(cat "$LAST_LOGIN_FILE")
+    else
+        LAST_LOGIN="First Login / No Record"
+    fi
+    
+    # বর্তমান লগইন ডাটা সেভ করে রাখা হচ্ছে পরবর্তী বারের জন্য
+    CURRENT_IP=$(echo $SSH_CLIENT | awk '{print $1}')
+    echo "$(date +"%A, %d %B %Y %T") from ${CURRENT_IP:-Local}" > "$LAST_LOGIN_FILE"
+
+    echo -e "\e[1;36m╭────────────────────────────────────────────────────────────────────────╮\e[0m"
+    echo -e "\e[1;36m│ \e[1;37m🔥 Welcome to Phoenix Server 🔥\e[0m                                        "
+    echo -e "\e[1;36m├────────────────────────────────────────────────────────────────────────┤\e[0m"
+    echo -e "\e[1;36m│ \e[1;32m💻 OS\e[0m         : ${OS_VERSION}"
+    echo -e "\e[1;36m│ \e[1;32m🐧 Kernel\e[0m     : ${KERNEL_VERSION} (${ARCH})"
+    echo -e "\e[1;36m│ \e[1;32m⚙️  CPU\e[0m        : ${CPU_MODEL}"
+    echo -e "\e[1;36m│ \e[1;32m🕒 Last Login\e[0m : ${LAST_LOGIN}"
+    echo -e "\e[1;36m╰────────────────────────────────────────────────────────────────────────╯\e[0m"
 }
 
 # সিস্টেম মনিটর ফাংশন
@@ -67,21 +82,43 @@ function mm() {
     echo -e "${C_G}------------------------------------------------------------${C_R}\n"
 }
 
-# কানেক্ট ফাংশন (cc)
+# কানেক্ট ফাংশন (cc) - With Key Memory
 function cc() {
-    if pgrep -x "tailscaled" > /dev/null
-    then
-        echo -e "\e[1;33mℹ Tailscale daemon is already running in background.\e[0m"
+    if pgrep -x "tailscaled" > /dev/null; then
+        echo -e "\e[1;33mℹ Tailscale daemon is already running.\e[0m"
     else
-        echo -e "\e[1;33m⌛ Starting Tailscale Daemon in background...\e[0m"
+        echo -e "\e[1;33m⌛ Starting Tailscale Daemon...\e[0m"
         sudo tailscaled --tun=userspace-networking --socks5-server=localhost:1055 &
         sleep 3
     fi
 
-    echo -e "\e[1;36m"
-    read -p "Enter Tailscale Auth Key: " TS_KEY
-    echo -e "\e[0m"
-    
+    TS_KEY_FILE="$HOME/.ts_auth_key"
+    TS_KEY=""
+
+    # চেক করা হচ্ছে আগের সেভ করা Key আছে কিনা
+    if [ -f "$TS_KEY_FILE" ]; then
+        echo -e "\n\e[1;36m🔑 Previous Tailscale Key found!\e[0m"
+        echo -e "  \e[1;32m1) Use previous Key\e[0m"
+        echo -e "  \e[1;33m2) Enter a new Key\e[0m"
+        read -p "Select an option [1 or 2]: " OPTION
+        
+        if [ "$OPTION" == "1" ]; then
+            TS_KEY=$(cat "$TS_KEY_FILE")
+            echo -e "\e[1;32m✔ Using previous Key...\e[0m"
+        elif [ "$OPTION" == "2" ]; then
+            read -p "Enter New Tailscale Auth Key: " TS_KEY
+            [ -n "$TS_KEY" ] && echo "$TS_KEY" > "$TS_KEY_FILE"
+        else
+            echo -e "\e[1;31m✘ Invalid option! Process cancelled.\e[0m"
+            return 1
+        fi
+    else
+        echo -e "\e[1;36m"
+        read -p "Enter Tailscale Auth Key: " TS_KEY
+        echo -e "\e[0m"
+        [ -n "$TS_KEY" ] && echo "$TS_KEY" > "$TS_KEY_FILE"
+    fi
+
     if [ -z "$TS_KEY" ]; then
         echo -e "\e[1;31m✘ Error: Auth Key cannot be empty!\e[0m"
         return 1
